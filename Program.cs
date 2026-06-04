@@ -81,6 +81,25 @@ internal enum PatchState
     Ambiguous
 }
 
+internal enum PatchMode
+{
+    Strict,
+    Compatibility
+}
+
+internal enum MatchSource
+{
+    None,
+    ExpectedOffset,
+    UniqueScan,
+    Ambiguous
+}
+
+internal sealed record PatchMatch(
+    PatchState State,
+    MatchSource Source,
+    List<int> Offsets);
+
 internal enum ReportKind
 {
     Normal,
@@ -128,7 +147,7 @@ internal static class Program
 
             AttachToParentConsole();
 
-            if (args.Length > 3)
+            if (args.Length > 4)
             {
                 PrintUsage();
                 return 2;
@@ -137,12 +156,20 @@ internal static class Program
             var command = args[0].ToLowerInvariant();
             string? exeArg = null;
             var force = false;
+            var mode = PatchMode.Strict;
 
             foreach (var arg in args.Skip(1))
             {
                 if (arg.Equals("--force", StringComparison.OrdinalIgnoreCase))
                 {
                     force = true;
+                    continue;
+                }
+
+                if (arg.Equals("--compatibility", StringComparison.OrdinalIgnoreCase) ||
+                    arg.Equals("--unsafe", StringComparison.OrdinalIgnoreCase))
+                {
+                    mode = PatchMode.Compatibility;
                     continue;
                 }
 
@@ -165,8 +192,8 @@ internal static class Program
 
             return command switch
             {
-                "status" => PrintStatus(exePath),
-                "apply" => ApplyPatches(exePath, force),
+                "status" => PrintStatus(exePath, mode),
+                "apply" => ApplyPatches(exePath, force, mode),
                 "restore" => RestoreBackup(exePath),
                 _ => PrintUsage()
             };
@@ -185,24 +212,24 @@ internal static class Program
         Console.WriteLine("Licensed under the MIT License.");
         Console.WriteLine();
         Console.WriteLine("Usage:");
-        Console.WriteLine("  twwh3-solo-mp-patcher status  [path\\to\\Warhammer3.exe]");
-        Console.WriteLine("  twwh3-solo-mp-patcher apply   [path\\to\\Warhammer3.exe] [--force]");
+        Console.WriteLine("  twwh3-solo-mp-patcher status  [path\\to\\Warhammer3.exe] [--compatibility]");
+        Console.WriteLine("  twwh3-solo-mp-patcher apply   [path\\to\\Warhammer3.exe] [--force] [--compatibility]");
         Console.WriteLine("  twwh3-solo-mp-patcher restore [path\\to\\Warhammer3.exe]");
         Console.WriteLine();
         Console.WriteLine("If no executable path is provided, ./Warhammer3.exe is used.");
         return 2;
     }
 
-    private static int PrintStatus(string exePath)
+    private static int PrintStatus(string exePath, PatchMode mode)
     {
-        var report = BuildStatusReport(exePath);
+        var report = BuildStatusReport(exePath, mode);
         WriteReport(report);
         return report.ExitCode;
     }
 
-    private static int ApplyPatches(string exePath, bool force)
+    private static int ApplyPatches(string exePath, bool force, PatchMode mode)
     {
-        var report = BuildApplyReport(exePath, force);
+        var report = BuildApplyReport(exePath, force, mode);
         WriteReport(report);
         return report.ExitCode;
     }
@@ -214,7 +241,7 @@ internal static class Program
         return report.ExitCode;
     }
 
-    private static OperationReport BuildStatusReport(string exePath, PatchProfile? selectedProfile = null)
+    private static OperationReport BuildStatusReport(string exePath, PatchMode mode, PatchProfile? selectedProfile = null)
     {
         var report = new ReportBuilder();
         var data = ReadExecutable(exePath);
@@ -225,6 +252,7 @@ internal static class Program
         report.Add($"Size: {data.Length} bytes", ReportKind.Detail);
         report.Add($"SHA-256: {sha256}", ReportKind.Detail);
         AddProfileStatus(report, profile, data.Length, sha256);
+        AddModeStatus(report, mode);
         report.Add();
 
         var exitCode = 0;
@@ -232,13 +260,13 @@ internal static class Program
 
         foreach (var patch in profile.Patches)
         {
-            var (state, offsets) = ClassifyPatch(data, patch);
-            patchStates.Add(state);
-            report.Add($"{patch.Name}: {StateName(state)} ({FormatOffsets(offsets)})", ReportKindForPatchState(state));
+            var match = ClassifyPatch(data, patch, mode);
+            patchStates.Add(match.State);
+            report.Add($"{patch.Name}: {StateName(match.State)}, {MatchSourceName(match.Source)} ({FormatOffsets(match.Offsets)})", ReportKindForPatchMatch(match));
             report.Add($"  Expected offset: 0x{patch.ExpectedOffset:X}", ReportKind.Detail);
             report.Add($"  {patch.Description}", ReportKind.Detail);
 
-            if (state is PatchState.Missing or PatchState.Ambiguous)
+            if (match.State is PatchState.Missing or PatchState.Ambiguous)
             {
                 exitCode = 2;
             }
@@ -253,7 +281,7 @@ internal static class Program
         return report.Build(exitCode);
     }
 
-    private static OperationReport BuildApplyReport(string exePath, bool force, PatchProfile? selectedProfile = null)
+    private static OperationReport BuildApplyReport(string exePath, bool force, PatchMode mode, PatchProfile? selectedProfile = null)
     {
         var report = new ReportBuilder();
         var data = ReadExecutable(exePath);
@@ -262,26 +290,27 @@ internal static class Program
         report.Add($"File: {exePath}", ReportKind.Header);
         report.Add($"SHA-256 before: {sha256}", ReportKind.Detail);
         AddProfileStatus(report, profile, data.Length, sha256);
+        AddModeStatus(report, mode);
 
         var planned = new List<(BinaryPatch Patch, int Offset)>();
 
         foreach (var patch in profile.Patches)
         {
-            var (state, offsets) = ClassifyPatch(data, patch);
-            switch (state)
+            var match = ClassifyPatch(data, patch, mode);
+            switch (match.State)
             {
                 case PatchState.Applied:
-                    report.Add($"{patch.Name}: already applied at 0x{offsets[0]:X}", ReportKind.Success);
+                    report.Add($"{patch.Name}: already applied at 0x{match.Offsets[0]:X} ({MatchSourceName(match.Source)})", ReportKindForPatchMatch(match));
                     break;
                 case PatchState.Unapplied:
-                    planned.Add((patch, offsets[0]));
-                    report.Add($"{patch.Name}: will apply at 0x{offsets[0]:X}", ReportKind.Warning);
+                    planned.Add((patch, match.Offsets[0]));
+                    report.Add($"{patch.Name}: will apply at 0x{match.Offsets[0]:X} ({MatchSourceName(match.Source)})", ReportKindForPatchMatch(match));
                     break;
                 default:
-                    report.Add($"{patch.Name}: cannot apply; state is {StateName(state)}", ReportKind.Error);
-                    if (offsets.Count > 0)
+                    report.Add($"{patch.Name}: cannot apply; state is {StateName(match.State)}", ReportKind.Error);
+                    if (match.Offsets.Count > 0)
                     {
-                        report.Add($"  hits: {FormatOffsets(offsets)}", ReportKind.Detail);
+                        report.Add($"  hits: {FormatOffsets(match.Offsets)}", ReportKind.Detail);
                     }
                     return report.Build(2);
             }
@@ -293,10 +322,15 @@ internal static class Program
             return report.Build(0);
         }
 
-        if (!ProfileMatches(profile, data.Length, sha256))
+        if (!ProfileMatches(profile, data.Length, sha256) && mode == PatchMode.Strict)
         {
             report.Add("Cannot apply because the executable does not match the selected patch profile.", ReportKind.Error);
             return report.Build(2);
+        }
+
+        if (!ProfileMatches(profile, data.Length, sha256))
+        {
+            report.Add("Compatibility mode is allowing apply despite profile SHA-256 or size mismatch.", ReportKind.Warning);
         }
 
         var backupPath = BackupPathFor(exePath);
@@ -376,29 +410,44 @@ internal static class Program
         return File.ReadAllBytes(exePath);
     }
 
-    private static (PatchState State, List<int> Offsets) ClassifyPatch(byte[] data, BinaryPatch patch)
+    private static PatchMatch ClassifyPatch(byte[] data, BinaryPatch patch, PatchMode mode)
     {
         var appliedPattern = AppliedPatternFor(patch);
         if (MatchesAt(data, patch.Before, patch.ExpectedOffset))
         {
-            return (PatchState.Unapplied, [patch.ExpectedOffset]);
+            return new PatchMatch(PatchState.Unapplied, MatchSource.ExpectedOffset, [patch.ExpectedOffset]);
         }
 
         if (MatchesAt(data, appliedPattern, patch.ExpectedOffset))
         {
-            return (PatchState.Applied, [patch.ExpectedOffset]);
+            return new PatchMatch(PatchState.Applied, MatchSource.ExpectedOffset, [patch.ExpectedOffset]);
+        }
+
+        if (mode == PatchMode.Strict)
+        {
+            return new PatchMatch(PatchState.Missing, MatchSource.None, []);
         }
 
         var beforeOffsets = FindAll(data, patch.Before);
         var afterOffsets = FindAll(data, appliedPattern);
         var allOffsets = beforeOffsets.Concat(afterOffsets).ToList();
 
-        if (allOffsets.Count == 0)
+        if (beforeOffsets.Count == 1 && afterOffsets.Count == 0)
         {
-            return (PatchState.Missing, []);
+            return new PatchMatch(PatchState.Unapplied, MatchSource.UniqueScan, beforeOffsets);
         }
 
-        return (PatchState.Ambiguous, allOffsets);
+        if (beforeOffsets.Count == 0 && afterOffsets.Count == 1)
+        {
+            return new PatchMatch(PatchState.Applied, MatchSource.UniqueScan, afterOffsets);
+        }
+
+        if (allOffsets.Count == 0)
+        {
+            return new PatchMatch(PatchState.Missing, MatchSource.None, []);
+        }
+
+        return new PatchMatch(PatchState.Ambiguous, MatchSource.Ambiguous, allOffsets);
     }
 
     private static List<int> FindAll(byte[] data, BytePattern needle)
@@ -447,7 +496,7 @@ internal static class Program
             .Select(profile => new
             {
                 Profile = profile,
-                Score = profile.Patches.Count(patch => ClassifyPatch(data, patch).State is not PatchState.Missing)
+                Score = profile.Patches.Count(patch => ClassifyPatch(data, patch, PatchMode.Compatibility).State is not PatchState.Missing)
             })
             .OrderByDescending(match => match.Score)
             .FirstOrDefault(match => match.Score > 0)
@@ -564,6 +613,18 @@ internal static class Program
         }
     }
 
+    private static void AddModeStatus(ReportBuilder report, PatchMode mode)
+    {
+        if (mode == PatchMode.Strict)
+        {
+            report.Add("Mode: strict", ReportKind.Detail);
+            return;
+        }
+
+        report.Add("Mode: compatibility", ReportKind.Warning);
+        report.Add("Compatibility mode allows unique signature matches even when the executable hash, size, or offset differs.", ReportKind.Warning);
+    }
+
     private static string ProfileDisplayName(PatchProfile profile)
     {
         var displayName = profile.DisplayVersion ?? profile.Name;
@@ -583,6 +644,27 @@ internal static class Program
             PatchState.Unapplied => ReportKind.Warning,
             PatchState.Missing or PatchState.Ambiguous => ReportKind.Error,
             _ => ReportKind.Normal
+        };
+    }
+
+    private static ReportKind ReportKindForPatchMatch(PatchMatch match)
+    {
+        if (match.Source == MatchSource.UniqueScan)
+        {
+            return ReportKind.Warning;
+        }
+
+        return ReportKindForPatchState(match.State);
+    }
+
+    private static string MatchSourceName(MatchSource source)
+    {
+        return source switch
+        {
+            MatchSource.ExpectedOffset => "expected offset",
+            MatchSource.UniqueScan => "compatibility scan",
+            MatchSource.Ambiguous => "ambiguous scan",
+            _ => "no match"
         };
     }
 
@@ -654,6 +736,7 @@ internal static class Program
     {
         private readonly TextBox _exePathBox;
         private readonly ComboBox _profileBox;
+        private readonly CheckBox _compatibilityBox;
         private readonly RichTextBox _outputBox;
         private readonly ProgressBar _progressBar;
         private readonly Label _statusLabel;
@@ -664,6 +747,7 @@ internal static class Program
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.1.0";
             Text = $"TWWH3 Solo Multiplayer Patcher v{version}";
+            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(760, 500);
             Size = new Size(840, 560);
@@ -673,9 +757,10 @@ internal static class Program
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 6,
+                RowCount = 7,
                 Padding = new Padding(12)
             };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -763,6 +848,14 @@ internal static class Program
             profileRow.Controls.Add(_profileBox, 1, 0);
             root.Controls.Add(profileRow, 0, 2);
 
+            _compatibilityBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "Compatibility mode",
+                Margin = new Padding(0, 0, 0, 8)
+            };
+            root.Controls.Add(_compatibilityBox, 0, 3);
+
             var buttonRow = new FlowLayoutPanel
             {
                 AutoSize = true,
@@ -783,15 +876,15 @@ internal static class Program
                 BorderStyle = BorderStyle.Fixed3D
             };
 
-            buttonRow.Controls.Add(MakeOperationButton("Check Status", async (_, _) => await RunReportAsync(() => BuildStatusReport(SelectedExePath(), SelectedProfile()))));
+            buttonRow.Controls.Add(MakeOperationButton("Check Status", async (_, _) => await RunReportAsync(() => BuildStatusReport(SelectedExePath(), SelectedMode(), SelectedProfile()))));
             buttonRow.Controls.Add(MakeOperationButton("Apply Patch", async (_, _) => await ConfirmAndRunAsync(
                 "Apply the solo multiplayer patch to this executable?",
-                () => BuildApplyReport(SelectedExePath(), force: false, SelectedProfile()))));
+                () => BuildApplyReport(SelectedExePath(), force: false, SelectedMode(), SelectedProfile()))));
             buttonRow.Controls.Add(MakeOperationButton("Restore Backup", async (_, _) => await ConfirmAndRunAsync(
                 "Restore this executable from Warhammer3.vanilla.exe?",
                 () => BuildRestoreReport(SelectedExePath()))));
             buttonRow.Controls.Add(MakeOperationButton("Clear Log", (_, _) => _outputBox.Clear()));
-            root.Controls.Add(buttonRow, 0, 3);
+            root.Controls.Add(buttonRow, 0, 4);
 
             var progressRow = new TableLayoutPanel
             {
@@ -820,9 +913,9 @@ internal static class Program
                 Text = "Idle"
             };
             progressRow.Controls.Add(_statusLabel, 1, 0);
-            root.Controls.Add(progressRow, 0, 4);
+            root.Controls.Add(progressRow, 0, 5);
 
-            root.Controls.Add(_outputBox, 0, 5);
+            root.Controls.Add(_outputBox, 0, 6);
 
             Controls.Add(root);
         }
@@ -957,8 +1050,13 @@ internal static class Program
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 _exePathBox.Text = dialog.FileName;
-                _ = RunReportAsync(() => BuildStatusReport(SelectedExePath(), SelectedProfile()));
+                _ = RunReportAsync(() => BuildStatusReport(SelectedExePath(), SelectedMode(), SelectedProfile()));
             }
+        }
+
+        private PatchMode SelectedMode()
+        {
+            return _compatibilityBox.Checked ? PatchMode.Compatibility : PatchMode.Strict;
         }
 
         private PatchProfile SelectedProfile()
@@ -973,6 +1071,11 @@ internal static class Program
 
         private async Task ConfirmAndRunAsync(string message, Func<OperationReport> operation)
         {
+            if (SelectedMode() == PatchMode.Compatibility)
+            {
+                message += "\r\n\r\nCompatibility mode is enabled. The patcher may ignore version, hash, size, and offset mismatches, but will only patch signatures found exactly once.";
+            }
+
             if (MessageBox.Show(this, message, Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             {
                 return;
@@ -1019,6 +1122,7 @@ internal static class Program
             _statusLabel.Text = isBusy ? "Working..." : "Idle";
             _exePathBox.Enabled = !isBusy;
             _profileBox.Enabled = !isBusy;
+            _compatibilityBox.Enabled = !isBusy;
             foreach (var button in _operationButtons)
             {
                 button.Enabled = !isBusy;

@@ -17,8 +17,8 @@ Running the executable will open a GUI where you may browse for `Warhammer3.exe`
 A CLI is also available for those who prefer:
 
 ```powershell
-twwh3-solo-mp-patcher status  "C:\path\to\Warhammer3.exe"
-twwh3-solo-mp-patcher apply   "C:\path\to\Warhammer3.exe"
+twwh3-solo-mp-patcher status  "C:\path\to\Warhammer3.exe" [--compatibility]
+twwh3-solo-mp-patcher apply   "C:\path\to\Warhammer3.exe" [--compatibility]
 twwh3-solo-mp-patcher restore "C:\path\to\Warhammer3.exe"
 ```
 
@@ -45,6 +45,16 @@ still matches the original unpatched bytes.
 
 Alternatively, running Steam's "Verify integrity of game files" should restore
 `Warhammer3.exe` to the factory state.
+
+## Compatibility Mode
+
+Strict mode is the default. It requires the selected profile's executable hash,
+file size, expected offsets, and byte signatures to match.
+
+Compatibility mode is an opt-in fallback for game hotfixes. It allows the hash,
+file size, and offsets to differ, but still refuses to patch unless each byte
+signature is found exactly once. In the GUI, enable the `Compatibility mode`
+checkbox. In the CLI, pass `--compatibility`.
 
 ## Build
 
@@ -81,12 +91,12 @@ dotnet publish .\TWWH3SoloMp.csproj `
   -o .\dist
 ```
 
-Published release artifacts are available from the GitHub Releases page.
+Published release artifacts are available from the GitHub Releases page, or from Nexus Mods https://www.nexusmods.com/totalwarwarhammer3/mods/363.
 
 ## Patch Profiles
 
 Patch data lives in [`patches.json`](patches.json), which is embedded into the
-release executable at compile time.
+release executable at compile time. Nexus users only need the single patcher exe.
 
 Profiles can include:
 

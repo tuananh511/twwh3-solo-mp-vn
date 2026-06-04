@@ -6,10 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>twwh3-solo-mp-patcher</AssemblyName>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
     <RootNamespace>Twwh3SoloMpPatcher</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <Authors>Cameron Comnenos</Authors>
-    <Copyright>Copyright © 2026 Cameron Comnenos</Copyright>
+    <Copyright>Copyright (c) 2026 Cameron Comnenos</Copyright>
     <Product>TWWH3 Solo Multiplayer</Product>
     <Description>Applies and restores the Total War: WARHAMMER III solo multiplayer executable patches.</Description>
   </PropertyGroup>

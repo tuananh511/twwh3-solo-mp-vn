@@ -28,4 +28,13 @@ Get-ChildItem -LiteralPath $dist | Select-Object Name, Length
 
 Write-Host ""
 Write-Host "Release artifact:"
-Write-Host (Join-Path $dist "twwh3-solo-mp-patcher.exe")
+$artifact = Join-Path $dist "twwh3-solo-mp-patcher.exe"
+Write-Host $artifact
+
+if (Test-Path -LiteralPath $artifact) {
+    $artifactHash = (Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Host ""
+    Write-Host "Release notes:"
+    Write-Host "Artifact: twwh3-solo-mp-patcher.exe"
+    Write-Host "SHA-256: $artifactHash"
+}
