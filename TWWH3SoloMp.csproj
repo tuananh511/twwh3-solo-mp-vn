@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>twwh3-solo-mp-patcher</AssemblyName>
+    <RootNamespace>Twwh3SoloMpPatcher</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>Cameron Comnenos</Authors>
+    <Copyright>Copyright © 2026 Cameron Comnenos</Copyright>
+    <Product>TWWH3 Solo Multiplayer</Product>
+    <Description>Applies and restores the Total War: WARHAMMER III solo multiplayer executable patches.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="patches.json" LogicalName="patches.json" />
+  </ItemGroup>
+</Project>
