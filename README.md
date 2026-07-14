@@ -142,6 +142,12 @@ Replace at offset `19`:
 ```text
 90 90 90 90 90
 ```
+## Troubleshooting
+
+[#troubleshooting](#troubleshooting)
+
+- **Red/orange "unapplied" lines when running Check Status in compatibility mode**: this is just status coloring, not an error. Run Apply Patch to actually patch.
+- **"Backup already exists" error on Apply**: the patcher already has a `Warhammer3.vanilla.exe` backup from a previous game version. Rename or delete it (it's outdated anyway once Steam has updated the game), then apply again — a fresh, correct backup will be created automatically.
 
 ## Notes
 
