@@ -161,22 +161,16 @@ Nếu vẫn báo đỏ/"no match" → nghĩa là bản update lần này đã đ
 
 ## Tự cập nhật offset khi game ra bản mới
 
-Khi Total War: WARHAMMER III ra bản update mới, `patches.json` cần được cập nhật `expectedOffset`, `exeSha256`, `exeSize` cho đúng bản mới. Có thể tự làm mà không cần chờ ai vá, bằng script `scripts/find_offset.py`.
+Nếu dropdown "Game version" chưa có bản bạn đang chơi, thử theo thứ tự sau:
 
-**Điều kiện:** file `Warhammer3.exe` phải là bản gốc, **chưa patch** (dùng "Restore Backup" trong app, hoặc để Steam verify lại tính toàn vẹn game trước khi thử).
+**Trường hợp 1 - Không cần biết kỹ thuật gì (thử trước):**
+1. Cần cài Python một lần duy nhất: tải tại https://www.python.org/downloads/, khi cài nhớ tick ô "Add python.exe to PATH"
+2. Vào Steam, dùng "Xác minh tính toàn vẹn tệp trò chơi" để đảm bảo `Warhammer3.exe` đang là bản gốc, chưa patch (hoặc bấm "Restore Backup" trong app nếu trước đó từng patch)
+3. Vào thư mục repo, mở `scripts\`, double-click file **`Tim-Offset-Moi.bat`**
+4. Làm theo hướng dẫn hiện ra trên màn hình: dán đường dẫn file `Warhammer3.exe`, chọn bản gần nhất làm mẫu, xác nhận ghi khi được hỏi
+5. Chạy lại `.\scripts\Publish-Release.ps1` để build bản patcher mới
+6. Mở app, Check Status - nếu xanh là xong
 
-**Cách dùng:**
-
-python scripts\find_offset.py "duong-dan\Warhammer3.exe" "<before-pattern-trong-patches.json>"
-
-Kết quả có 3 trường hợp:
-- **Tìm thấy đúng 1 vị trí** → đoạn code không đổi, chỉ dịch chuyển. Copy offset đó vào `expectedOffset` trong `patches.json`, xong.
-- **Không tìm thấy** → đoạn code thực sự đã thay đổi, cần dùng disassembler (x64dbg, Ghidra) để tìm lại pattern tương đương.
-- **Tìm thấy nhiều vị trí** → pattern chưa đủ đặc trưng, cũng cần disassembler để xác nhận đúng vị trí.
-
-Lấy hash và kích thước file mới:
-```powershell
-Get-FileHash "duong-dan\Warhammer3.exe" -Algorithm SHA256
-(Get-Item "duong-dan\Warhammer3.exe").Length
-```
+**Trường hợp 2 - Nếu cách 1 báo "không tìm thấy" hoặc "nhiều vị trí":**
+Nghĩa là đoạn code game đã thay đổi thật sự (không chỉ dịch chuyển vị trí). Trường hợp này cần disassembler (x64dbg, Ghidra) để phân tích lại - hãy report lên GitHub Issues kèm bản game bạn đang gặp để được hỗ trợ.
 
