@@ -146,13 +146,26 @@ Replace tại offset `19`:
 - Patcher yêu cầu cả byte pattern và file offset đều phải khớp đúng như mong đợi.
 - Không phân phối file exe game đã patch. Chỉ nên chia sẻ patcher/mã nguồn này.
 
+## Khi game vừa update mà chưa có bản vá tương ứng
+
+Nếu bạn thấy dropdown "Game version" không có đúng bản game bạn đang chơi, cứ thử theo cách sau — không cần biết code, không cần chạy lệnh gì:
+
+1. Mở app, chọn file `Warhammer3.exe`
+2. Ở dropdown "Game version", chọn bản **gần nhất** (bản cũ hơn liền trước)
+3. Tick vào ô **"Compatibility mode"**
+4. Bấm **Apply Patch**
+
+Nếu thấy 2 dòng patch báo **"applied"** (màu xanh) → xong, chơi bình thường.
+
+Nếu vẫn báo đỏ/"no match" → nghĩa là bản update lần này đã đổi thật sự logic bên trong game, không chỉ dịch chuyển. Trường hợp này cần chờ cập nhật `patches.json` (xem mục bên dưới dành cho người biết kỹ thuật), hoặc report issue lên repo để được hỗ trợ.
+
 ## Tự cập nhật offset khi game ra bản mới
 
 Khi Total War: WARHAMMER III ra bản update mới, `patches.json` cần được cập nhật `expectedOffset`, `exeSha256`, `exeSize` cho đúng bản mới. Có thể tự làm mà không cần chờ ai vá, bằng script `scripts/find_offset.py`.
 
 **Điều kiện:** file `Warhammer3.exe` phải là bản gốc, **chưa patch** (dùng "Restore Backup" trong app, hoặc để Steam verify lại tính toàn vẹn game trước khi thử).
 
-**Cách dùng cho Dev:**
+**Cách dùng:**
 
 python scripts\find_offset.py "duong-dan\Warhammer3.exe" "<before-pattern-trong-patches.json>"
 
@@ -166,3 +179,4 @@ Lấy hash và kích thước file mới:
 Get-FileHash "duong-dan\Warhammer3.exe" -Algorithm SHA256
 (Get-Item "duong-dan\Warhammer3.exe").Length
 ```
+
