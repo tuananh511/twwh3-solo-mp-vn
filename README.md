@@ -145,3 +145,24 @@ Replace tại offset `19`:
 - Patcher sẽ từ chối chạy (fail closed) nếu thiếu hoặc không rõ ràng về byte signature.
 - Patcher yêu cầu cả byte pattern và file offset đều phải khớp đúng như mong đợi.
 - Không phân phối file exe game đã patch. Chỉ nên chia sẻ patcher/mã nguồn này.
+
+## Tự cập nhật offset khi game ra bản mới
+
+Khi Total War: WARHAMMER III ra bản update mới, `patches.json` cần được cập nhật `expectedOffset`, `exeSha256`, `exeSize` cho đúng bản mới. Có thể tự làm mà không cần chờ ai vá, bằng script `scripts/find_offset.py`.
+
+**Điều kiện:** file `Warhammer3.exe` phải là bản gốc, **chưa patch** (dùng "Restore Backup" trong app, hoặc để Steam verify lại tính toàn vẹn game trước khi thử).
+
+**Cách dùng cho Dev:**
+
+python scripts\find_offset.py "duong-dan\Warhammer3.exe" "<before-pattern-trong-patches.json>"
+
+Kết quả có 3 trường hợp:
+- **Tìm thấy đúng 1 vị trí** → đoạn code không đổi, chỉ dịch chuyển. Copy offset đó vào `expectedOffset` trong `patches.json`, xong.
+- **Không tìm thấy** → đoạn code thực sự đã thay đổi, cần dùng disassembler (x64dbg, Ghidra) để tìm lại pattern tương đương.
+- **Tìm thấy nhiều vị trí** → pattern chưa đủ đặc trưng, cũng cần disassembler để xác nhận đúng vị trí.
+
+Lấy hash và kích thước file mới:
+```powershell
+Get-FileHash "duong-dan\Warhammer3.exe" -Algorithm SHA256
+(Get-Item "duong-dan\Warhammer3.exe").Length
+```
